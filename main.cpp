@@ -15,6 +15,17 @@ const double pi = 3.14159265358979323846;
 using namespace std;
 using namespace cv;
 
+class Bar { // convenience class for extracting t-values
+    int width = 0;
+    int type = 0;
+
+    public:
+        Bar(int w, int t = 0) {
+            width = w;
+            type = t;
+        }
+};
+
 VideoCapture open_external_cam() { // open a capture stream with preference given to external devices
     VideoCapture cap;
     for (int i=2; i>=0; i--) {
@@ -116,8 +127,28 @@ vector<int> get_line_of_pixels(Mat &image) { // scans a line of pixels across th
     return line;
 }
 
+vector<Bar> extract_bars_from_line(vector<int> &line) {
+    vector<Bar> bars;
+
+    int last_pix = line[0];
+    int len = 1;
+
+    for (auto &pix: line) {
+        if (pix == last_pix) {
+            len++;
+        } else {
+            bars.push_back(Bar(len, last_pix));
+            len = 1;
+        }
+
+        last_pix = pix;
+    }
+
+    return bars;
+}
+
 int main() {
-    Mat img = imread("IMG_20240227_0008.jpg");
+    Mat img = imread("IMG_20240227_0004.jpg");
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
@@ -125,6 +156,7 @@ int main() {
     mark_blob(img, m);
 
     vector<int> line = get_line_of_pixels(bin);
+    vector<Bar> bars = extract_bars_from_line(line);
     imshow("Image", img);
     imshow("Grayscale", gray);
     imshow("Binary", bin);
