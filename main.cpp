@@ -62,7 +62,7 @@ Mat apply_otsu_thresholding(Mat &image, int radius) { // otsu thresholding
     Mat target;
     Mat blur;
     GaussianBlur(image, blur, Size(0, 0), radius, radius);
-    threshold(blur, target, THRESHOLD, 255, THRESH_BINARY + THRESH_OTSU);  // do thresholding
+    threshold(blur, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
     return target;
 }
 
@@ -127,7 +127,7 @@ vector<int> get_line_of_pixels(Mat &image) { // scans a line of pixels across th
     return line;
 }
 
-vector<Bar> extract_bars_from_line(vector<int> &line) {
+vector<Bar> extract_bars_from_line(vector<int> &line) { // get a sequence of bar objects which represents a run of 1's or 0's
     vector<Bar> bars;
 
     int last_pix = line[0];
@@ -148,7 +148,7 @@ vector<Bar> extract_bars_from_line(vector<int> &line) {
 }
 
 int main() {
-    Mat img = imread("IMG_20240227_0004.jpg");
+    Mat img = imread("IMG_20240227_0003.jpg");
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
