@@ -16,14 +16,22 @@ using namespace std;
 using namespace cv;
 
 class Bar { // convenience class for extracting t-values
-    int width = 0;
-    int type = 0;
-
     public:
+        int width = 0;
+        int type = 0;
+
         Bar(int w, int t = 0) {
             width = w;
             type = t;
         }
+};
+
+class TVal {
+    public:
+        int t1 = 0;
+        int t2 = 0;
+        int t3 = 0;
+        int t4 = 0;
 };
 
 VideoCapture open_external_cam() { // open a capture stream with preference given to external devices
@@ -36,6 +44,33 @@ VideoCapture open_external_cam() { // open a capture stream with preference give
     }
 
     return cap;
+}
+
+Mat capture_photo() { // Display camera output and await user input before capturing
+    VideoCapture cap = open_external_cam(); // On my laptop "0" is the built-in camera. 
+    if (!cap.isOpened()) {
+        cerr << "Error opening the camera!" << endl;
+    }
+
+    Mat frame;
+    
+    for (;;)
+    {
+        // wait for a new frame from camera and store it into 'frame'
+        cap.read(frame);
+        // check if we succeeded
+        if (frame.empty()) {
+            cout << "ERROR! blank frame grabbed\n";
+            break;
+        }
+
+        // show live and wait for a key with timeout long enough to show images
+        imshow("Live", frame);
+        if (waitKey(5) >= 0)
+            break;
+    }
+    // destroyAllWindows();
+    return frame;
 }
 
 Mat make_grayscale(Mat &image) { // convert an image to grayscale
@@ -67,7 +102,7 @@ Mat apply_otsu_thresholding(Mat &image, int radius) { // otsu thresholding
 }
 
 Moments get_moments(Mat &image) {  // get the 0th-3rd order moments for white parts of image
-    return moments(255 - image, true);
+    return moments(image, true);
 }
 
 vector<int> get_centroid(Moments &m) { // get the x,y coordinates given moment data
@@ -131,7 +166,7 @@ vector<Bar> extract_bars_from_line(vector<int> &line) { // get a sequence of bar
     vector<Bar> bars;
 
     int last_pix = line[0];
-    int len = 1;
+    int len = 0;
 
     for (auto &pix: line) {
         if (pix == last_pix) {
@@ -144,11 +179,61 @@ vector<Bar> extract_bars_from_line(vector<int> &line) { // get a sequence of bar
         last_pix = pix;
     }
 
+    bars.push_back(Bar(len, last_pix));
+
     return bars;
 }
 
+int convert_to_module(int ti, int t) { // takes absolute t-value and total bar width to find modular t value
+    float ratio = (float)ti / t;
+    return (int)round(7 * ratio);
+}
+
+vector<TVal> extract_t_values(vector<Bar> &bars) { // get module t values for EAN-13 decoding
+    /* Assumptions: 
+            - There is a 'quiet section' of zeros before the first guard bar
+              and after the last guard bar
+            - There are 12 characters (4 bars each) and 3 guard bars i.e. raw_bars has len 61
+    */
+
+    vector<TVal> tvals;
+
+    for (int i=4; i<28; i+=4) { // left half traversal
+        vector<Bar> unit(bars.begin() + i, bars.begin() + i + 4); // extract 4 bars at a time
+
+        int total_width = 0; // get the total width of 4 bars
+        for (auto &b: unit) {total_width += b.width;}
+
+        TVal tval; // compute the t-values, in reverse since we are on LHS
+        tval.t1 = convert_to_module(unit[3].width + unit[2].width, total_width); 
+        tval.t2 = convert_to_module(unit[2].width + unit[1].width, total_width); 
+        tval.t3 = convert_to_module(unit[1].width + unit[0].width, total_width); 
+        tval.t4 = convert_to_module(unit[0].width, total_width); 
+
+        tvals.push_back(tval);
+    }
+
+    for (int i=33; i<57; i+=4) { // right half traversal
+        vector<Bar> unit(bars.begin() + i, bars.begin() + i + 4); // extract 4 bars at a time
+
+        int total_width = 0; // get the total width of 4 bars
+        for (auto &b: unit) {total_width += b.width;}
+
+        TVal tval; // compute the t-values
+        tval.t1 = convert_to_module(unit[0].width + unit[1].width, total_width); 
+        tval.t2 = convert_to_module(unit[1].width + unit[1].width, total_width); 
+        tval.t3 = convert_to_module(unit[2].width + unit[3].width, total_width); 
+        tval.t4 = convert_to_module(unit[3].width, total_width); 
+
+        tvals.push_back(tval);
+    }
+
+    return tvals;
+}
+
 int main() {
-    Mat img = imread("IMG_20240227_0003.jpg");
+    // Mat img = imread("IMG_20240227_0003.jpg");
+    Mat img = capture_photo();
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
@@ -157,6 +242,8 @@ int main() {
 
     vector<int> line = get_line_of_pixels(bin);
     vector<Bar> bars = extract_bars_from_line(line);
+    vector<TVal> tvals = extract_t_values(bars);
+
     imshow("Image", img);
     imshow("Grayscale", gray);
     imshow("Binary", bin);
