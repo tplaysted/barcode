@@ -34,6 +34,12 @@ class TVal {
         int t4 = 0;
 };
 
+class Digit {
+    public: 
+        int val = -1;
+        bool even = true;
+};
+
 VideoCapture open_external_cam() { // open a capture stream with preference given to external devices
     VideoCapture cap;
     for (int i=2; i>=0; i--) {
@@ -186,7 +192,11 @@ vector<Bar> extract_bars_from_line(vector<int> &line) { // get a sequence of bar
 
 int convert_to_module(int ti, int t) { // takes absolute t-value and total bar width to find modular t value
     float ratio = (float)ti / t;
-    return (int)round(7 * ratio);
+    int mod = (int)round(7 * ratio);
+
+    if (mod > 5) {return 5;} // in case we over shoot
+
+    return mod;
 }
 
 vector<TVal> extract_t_values(vector<Bar> &bars) { // get module t values for EAN-13 decoding
@@ -221,7 +231,7 @@ vector<TVal> extract_t_values(vector<Bar> &bars) { // get module t values for EA
 
         TVal tval; // compute the t-values
         tval.t1 = convert_to_module(unit[0].width + unit[1].width, total_width); 
-        tval.t2 = convert_to_module(unit[1].width + unit[1].width, total_width); 
+        tval.t2 = convert_to_module(unit[1].width + unit[2].width, total_width); 
         tval.t3 = convert_to_module(unit[2].width + unit[3].width, total_width); 
         tval.t4 = convert_to_module(unit[3].width, total_width); 
 
@@ -231,9 +241,128 @@ vector<TVal> extract_t_values(vector<Bar> &bars) { // get module t values for EA
     return tvals;
 }
 
+Digit decode_t_val(TVal &tval) { // convert a set of t-values into an EAN-13 digit
+    Digit d;
+
+    switch (tval.t1) {
+        case 2: {
+            switch (tval.t2) {
+                case 2: d.even = true; d.val = 6; break;
+                case 3: d.even = false; d.val = 0; break;
+                case 4: d.even = true; d.val = 4; break;
+                case 5: d.even = false; d.val = 3; break;
+                default: break;
+            }
+        } break;
+        case 3: {
+            switch (tval.t2) {
+                case 2: d.even = false; d.val = 9; break;
+                case 3: {
+                    switch (tval.t4) {
+                        case 2: d.even = true; d.val = 2; break;
+                        case 3: d.even = true; d.val = 8; break;
+                        default: break;
+                    }
+                } break;
+                case 4: {
+                    switch (tval.t4) {
+                        case 2: d.even = false; d.val = 1; break;
+                        case 1: d.even = false; d.val = 7; break;
+                        default: break;
+                    }
+                } break;
+                case 5: d.even = true; d.val = 5; break;
+                default: break;
+            }
+        }  break;
+        case 4: {
+            switch (tval.t2) {
+                case 2: d.even = true; d.val = 9; break;
+                case 3: {
+                    switch (tval.t4) {
+                        case 2: d.even = false; d.val = 2; break;
+                        case 1: d.even = false; d.val = 8; break;
+                        default: break;
+                    }
+                } break;
+                case 4: {
+                    switch (tval.t4) {
+                        case 1: d.even = true; d.val = 1; break;
+                        case 2: d.even = true; d.val = 7; break;
+                        default: break;
+                    }
+                } break;
+                case 5: d.even = false; d.val = 5; break;
+                default: break;
+            }
+        } break;
+        case 5: {
+            switch (tval.t2) {
+                case 2: d.even = false; d.val = 6; break;
+                case 3: d.even = true; d.val = 0; break;
+                case 4: d.even = false; d.val = 4; break;
+                case 5: d.even = true; d.val = 3; break;
+                default: break;
+            }
+        } break;
+        default: break;
+    }
+
+    return d;
+}
+
+vector<Digit> decode_t_vals(vector<TVal> &tvals) {
+    vector<Digit> digits;
+    for (auto &t: tvals) {digits.push_back(decode_t_val(t));}
+
+    return digits;
+}
+
+void orient_digits(vector<Digit> &digits) { // checks if orientation is correct, and reverses digits if not
+    // The leftmost digit alwas has odd parity in an EAN-13 encoding
+    if (digits[0].even) {reverse(digits.begin(), digits.end());}
+}
+
+int get_country_code(vector<Digit> &digits) { // checks parity of first 7 digits to find the country code
+    char p = 0b0;
+
+    for (int i=0; i<6; i++) {
+        if (digits[i].even) {
+            p = p << 1;
+        } else {
+            p += 1;
+            p = p << 1;
+        }
+    }
+
+    switch (p) {
+        case 0b1111110: return 0; break;
+        case 0b1101000: return 1; break;
+        case 0b1100100: return 2; break;
+        case 0b1100010: return 3; break;
+        case 0b1011000: return 4; break;
+        case 0b1001100: return 5; break;
+        case 0b1000110: return 6; break;
+        case 0b1010100: return 7; break;
+        case 0b1010010: return 8; break;
+        case 0b1001010: return 9; break;
+        default: return -1;
+    }
+}
+
+vector<int> get_full_decoding(vector<Digit> &digits) {
+    vector<int> decoding;
+    decoding.push_back(get_country_code(digits));
+
+    for (auto &d: digits) {decoding.push_back(d.val);}
+
+    return decoding;
+}
+
+
 int main() {
-    // Mat img = imread("IMG_20240227_0003.jpg");
-    Mat img = capture_photo();
+    Mat img = imread("IMG_20240227_0003.jpg");
+    // Mat img = capture_photo();
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
@@ -243,12 +372,20 @@ int main() {
     vector<int> line = get_line_of_pixels(bin);
     vector<Bar> bars = extract_bars_from_line(line);
     vector<TVal> tvals = extract_t_values(bars);
+    vector<Digit> digits = decode_t_vals(tvals); 
+    orient_digits(digits);
 
-    imshow("Image", img);
-    imshow("Grayscale", gray);
-    imshow("Binary", bin);
-    waitKey(0);
+    vector<int> decoding = get_full_decoding(digits);
 
-    cout << "Hello, world!" << endl;
+    cout << "Decoded values:" << endl;
+    for (auto &i: decoding) {cout << i;}
+    cout << endl;
+
+
+    // imshow("Image", img);
+    // imshow("Grayscale", gray);
+    // imshow("Binary", bin);
+    // waitKey(0);
+
     return 0;
 }
