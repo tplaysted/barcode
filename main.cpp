@@ -190,7 +190,7 @@ vector<Bar> extract_bars_from_line(vector<int> &line) { // get a sequence of bar
     return bars;
 }
 
-int convert_to_module(int ti, int t) { // takes absolute t-value and total bar width to find modular t value
+int convert_to_module_seven(int ti, int t) { // takes absolute t-value and total bar width to find modular t value
     float ratio = (float)ti / t;
     int mod = (int)round(7 * ratio);
 
@@ -199,41 +199,69 @@ int convert_to_module(int ti, int t) { // takes absolute t-value and total bar w
     return mod;
 }
 
+int convert_to_module_three(int ti, int t) { // takes absolute t-value and total bar width to find modular t value
+    float ratio = (float)ti / t;
+    int mod = (int)round(3 * ratio);
+
+    return mod;
+}
+
+bool is_outer_guard_bar(vector<Bar> &bars) { // looks at 3 bars and checks whether it is an outer guard bar
+    if(bars[0].type == 0) {return false;} // guard bar begins with white
+
+    int total_width = 0; // get the total width of 3 bars
+    for (auto &b: bars) {total_width += b.width;}
+
+    int t1 = convert_to_module_three(bars[0].width + bars[1].width, total_width);
+    int t2 = convert_to_module_three(bars[1].width + bars[2].width, total_width);
+
+    return (t1 == 2) & (t2 == 2); // all t=2 corresponds to middle guard bar
+}
+
 vector<TVal> extract_t_values(vector<Bar> &bars) { // get module t values for EAN-13 decoding
     /* Assumptions: 
             - There is a 'quiet section' of zeros before the first guard bar
               and after the last guard bar
-            - There are 12 characters (4 bars each) and 3 guard bars i.e. raw_bars has len 61
+            - There are 12 characters (4 bars each) and 3 guard bars i.e. bars has len at least 61
     */
+    // First we need to locate the left guard bar
+    int quiet_zone_start = 0;
+    for (int i=0; i<bars.size() - 3; i++) {
+        vector<Bar> three(bars.begin() + i, bars.begin() + i + 3);
+        if (is_outer_guard_bar(three)) {
+            quiet_zone_start = i - 1;
+            break;
+        }
+    }
 
     vector<TVal> tvals;
 
-    for (int i=4; i<28; i+=4) { // left half traversal
+    for (int i=quiet_zone_start + 4; i<quiet_zone_start + 28; i+=4) { // left half traversal
         vector<Bar> unit(bars.begin() + i, bars.begin() + i + 4); // extract 4 bars at a time
 
         int total_width = 0; // get the total width of 4 bars
         for (auto &b: unit) {total_width += b.width;}
 
         TVal tval; // compute the t-values, in reverse since we are on LHS
-        tval.t1 = convert_to_module(unit[3].width + unit[2].width, total_width); 
-        tval.t2 = convert_to_module(unit[2].width + unit[1].width, total_width); 
-        tval.t3 = convert_to_module(unit[1].width + unit[0].width, total_width); 
-        tval.t4 = convert_to_module(unit[0].width, total_width); 
+        tval.t1 = convert_to_module_seven(unit[3].width + unit[2].width, total_width); 
+        tval.t2 = convert_to_module_seven(unit[2].width + unit[1].width, total_width); 
+        tval.t3 = convert_to_module_seven(unit[1].width + unit[0].width, total_width); 
+        tval.t4 = convert_to_module_seven(unit[0].width, total_width); 
 
         tvals.push_back(tval);
     }
 
-    for (int i=33; i<57; i+=4) { // right half traversal
+    for (int i=quiet_zone_start + 33; i<quiet_zone_start + 57; i+=4) { // right half traversal
         vector<Bar> unit(bars.begin() + i, bars.begin() + i + 4); // extract 4 bars at a time
 
         int total_width = 0; // get the total width of 4 bars
         for (auto &b: unit) {total_width += b.width;}
 
         TVal tval; // compute the t-values
-        tval.t1 = convert_to_module(unit[0].width + unit[1].width, total_width); 
-        tval.t2 = convert_to_module(unit[1].width + unit[2].width, total_width); 
-        tval.t3 = convert_to_module(unit[2].width + unit[3].width, total_width); 
-        tval.t4 = convert_to_module(unit[3].width, total_width); 
+        tval.t1 = convert_to_module_seven(unit[0].width + unit[1].width, total_width); 
+        tval.t2 = convert_to_module_seven(unit[1].width + unit[2].width, total_width); 
+        tval.t3 = convert_to_module_seven(unit[2].width + unit[3].width, total_width); 
+        tval.t4 = convert_to_module_seven(unit[3].width, total_width); 
 
         tvals.push_back(tval);
     }
@@ -359,33 +387,49 @@ vector<int> get_full_decoding(vector<Digit> &digits) {
     return decoding;
 }
 
+int get_checksum(vector<int> &digits) { // get the checksum of an EAN-13 digit string
+    int odds = 0;
+    int evens = 0;
+
+    for (int i=1; i<13; i+=2) {odds += digits[i];}
+    for (int i=0; i<12; i+=2) {evens += digits[i];}
+
+    int check = (3 * odds + evens) % 10;
+
+    if (check == 0) {
+        return check;
+    } else {
+        return 10 - check;
+    }
+}
+
 
 int main() {
-    Mat img = imread("IMG_20240227_0003.jpg");
-    // Mat img = capture_photo();
+    // Mat img = imread("IMG_20240227_0004.jpg");
+    Mat img = capture_photo();
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
-    Moments m = get_moments(bin);
+    Moments m = get_moments(bin); // get orientation of barcode
     mark_blob(img, m);
 
-    vector<int> line = get_line_of_pixels(bin);
-    vector<Bar> bars = extract_bars_from_line(line);
-    vector<TVal> tvals = extract_t_values(bars);
-    vector<Digit> digits = decode_t_vals(tvals); 
-    orient_digits(digits);
+    imshow("Image", img);
+    waitKey(0);
 
-    vector<int> decoding = get_full_decoding(digits);
+    vector<int> line = get_line_of_pixels(bin); // get line of pixels across middle of barcode [11000001111000000...]
+    vector<Bar> bars = extract_bars_from_line(line); // [{2,1}, {5,0}, {...}]
+    vector<TVal> tvals = extract_t_values(bars); // []
+    vector<Digit> digits = decode_t_vals(tvals);  // doing the EAN-13 decoding
+    orient_digits(digits); // first digit should be odd parity
+
+    vector<int> decoding = get_full_decoding(digits); // figuring out the country code
 
     cout << "Decoded values:" << endl;
     for (auto &i: decoding) {cout << i;}
     cout << endl;
 
+    cout << "Last digit is " << decoding[12] << " where we expected " << get_checksum(decoding) << endl;
 
-    // imshow("Image", img);
-    // imshow("Grayscale", gray);
-    // imshow("Binary", bin);
-    // waitKey(0);
 
     return 0;
 }
