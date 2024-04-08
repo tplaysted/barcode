@@ -113,7 +113,7 @@ double get_orientation(Moments &m) { // get the axis of minimum moments of inert
     return -0.5 * atan2(n, d); // atan2 retrieves the principal angle by default
 }
 
-void mark_blob(Mat &image, Moments &m) { // draw the axis of orientation on a blob
+void mark_line(Mat &image, Moments &m) { // draw the axis of orientation on a blob
     vector<int> c = get_centroid(m);
     double o = get_orientation(m);
     double short_axis = sqrt(m.m00 / 4.0);

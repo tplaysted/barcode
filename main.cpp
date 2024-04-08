@@ -127,35 +127,31 @@ double get_orientation(Moments &m) { // get the axis of minimum moments of inert
     return -0.5 * atan2(n, d); // atan2 retrieves the principal angle by default
 }
 
-void mark_blob(Mat &image, Moments &m) { // draw the axis of orientation on a blob
+void mark_line(Mat &image, Moments &m) { // draw the axis of orientation on a blob
     vector<int> c = get_centroid(m);
     double o = get_orientation(m);
-    double short_axis = sqrt(m.m00 / 4.0);
-    double long_axis = 2 * short_axis;
+    int w = image.size().width; // scan across entire image
 
-    Point2i short_1, short_2, long_1, long_2;
+    Point2i long_1, long_2;
 
-    short_1 = Point2i(c[0] - short_axis * sin(o), c[1] - short_axis * cos(o));
-    short_2 = Point2i(c[0] + short_axis * sin(o), c[1] + short_axis * cos(o));
-    long_1 = Point2i(c[0] - long_axis * cos(o), c[1] + long_axis * sin(o));
-    long_2 = Point2i(c[0] + long_axis * cos(o), c[1] - long_axis * sin(o));
+    long_1 = Point2i(c[0] - w * cos(o), c[1] + w * sin(o));
+    long_2 = Point2i(c[0] + w * cos(o), c[1] - w * sin(o));
 
-    line(image, short_1, short_2, Scalar(0, 255, 0), 2, LINE_AA);
-    line(image, long_1, long_2, Scalar(0, 255, 0), 2, LINE_AA);
+    line(image, long_1, long_2, Scalar(0, 0, 255), 2, LINE_AA);
 }
 
 vector<int> get_line_of_pixels(Mat &image) { // scans a line of pixels across the bar code
     Moments m = get_moments(image);
     vector<int> c = get_centroid(m);
-    float o = get_orientation(m);
+    double o = get_orientation(m);
     int w = image.size().width; // scan across entire image
 
-    int x1 = c[0] - w * cos(o); // define points to draw a line between
-    int y1 = c[1] - w * sin(o);
-    int x2 = c[0] + w * cos(o);
-    int y2 = c[1] + w * sin(o);
+    Point2i long_1, long_2; // poits to draw between
 
-    LineIterator it = LineIterator(image, Point(x1, y1), Point(x2, y2), 4);
+    long_1 = Point2i(c[0] - w * cos(o), c[1] + w * sin(o));
+    long_2 = Point2i(c[0] + w * cos(o), c[1] - w * sin(o));
+
+    LineIterator it = LineIterator(image, long_1, long_2, 4);
     vector<int> line(it.count);
 
     for (int i=0; i < it.count; i++, it++) {
@@ -405,14 +401,15 @@ int get_checksum(vector<int> &digits) { // get the checksum of an EAN-13 digit s
 
 
 int main() {
-    // Mat img = imread("IMG_20240227_0004.jpg");
-    Mat img = capture_photo();
+    Mat img = imread("angle.png");
+    // Mat img = capture_photo();
     Mat gray = make_grayscale(img);
     Mat bin = apply_otsu_thresholding(gray, 1);
 
     Moments m = get_moments(bin); // get orientation of barcode
-    mark_blob(img, m);
+    mark_line(img, m);
 
+    imshow("Binary", bin);
     imshow("Image", img);
     waitKey(0);
 
