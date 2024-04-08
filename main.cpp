@@ -99,11 +99,17 @@ Mat apply_thresholding(Mat &image, int radius) {
     return target;
 }
 
-Mat apply_otsu_thresholding(Mat &image, int radius) { // otsu thresholding
+Mat apply_otsu_thresholding(Mat &image) { // otsu thresholding
+    Mat target;
+    threshold(image, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
+    return target;
+}
+
+Mat apply_otsu_thresholding_with_blur(Mat &image, int radius) { // otsu thresholding
     Mat target;
     Mat blur;
     GaussianBlur(image, blur, Size(0, 0), radius, radius);
-    threshold(blur, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
+    threshold(image, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
     return target;
 }
 
@@ -191,6 +197,7 @@ int convert_to_module_seven(int ti, int t) { // takes absolute t-value and total
     int mod = (int)round(7 * ratio);
 
     if (mod > 5) {return 5;} // in case we over shoot
+    if (mod < 1) {return 1;} // in case we under shoot
 
     return mod;
 }
@@ -404,7 +411,7 @@ int main() {
     Mat img = imread("angle.png");
     // Mat img = capture_photo();
     Mat gray = make_grayscale(img);
-    Mat bin = apply_otsu_thresholding(gray, 1);
+    Mat bin = apply_otsu_thresholding(gray);
 
     Moments m = get_moments(bin); // get orientation of barcode
     mark_line(img, m);
@@ -421,12 +428,13 @@ int main() {
 
     vector<int> decoding = get_full_decoding(digits); // figuring out the country code
 
-    cout << "Decoded values:" << endl;
-    for (auto &i: decoding) {cout << i;}
+    cout << "Decoded values:" << endl; // Print decoded values
+    cout << decoding[0] << " ";
+    for (int i=1; i<7; i++) {cout << decoding[i];} cout << " ";
+    for (int i=7; i<13; i++) {cout << decoding[i];}
     cout << endl;
 
-    cout << "Last digit is " << decoding[12] << " where we expected " << get_checksum(decoding) << endl;
-
+    cout << "Last digit is " << decoding[12] << " where the checksum is " << get_checksum(decoding) << endl;
 
     return 0;
 }
