@@ -109,7 +109,7 @@ Mat apply_otsu_thresholding_with_blur(Mat &image, int radius) { // otsu threshol
     Mat target;
     Mat blur;
     GaussianBlur(image, blur, Size(0, 0), radius, radius);
-    threshold(image, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
+    threshold(blur, target, THRESHOLD, 255, THRESH_BINARY_INV + THRESH_OTSU);  // do thresholding
     return target;
 }
 
